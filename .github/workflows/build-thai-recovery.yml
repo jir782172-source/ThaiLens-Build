@@ -1,0 +1,66 @@
+name: Build Thai recovery IPA
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: macos-15-intel
+    timeout-minutes: 35
+    defaults:
+      run:
+        working-directory: source
+    steps:
+      - uses: actions/checkout@v4
+      - name: Extract uploaded source
+        working-directory: .
+        run: |
+          unzip -q ThaiLens-source-v0.9.zip -d source
+      - name: Prepare OCR assets and validate packaging
+        run: |
+          python3 scripts/prepare.py
+          python3 -m unittest discover -s scripts -p test_packaging.py -v
+      - name: Generate Xcode project
+        run: |
+          brew install xcodegen
+          xcodegen generate
+      - name: Resolve dependencies
+        run: xcodebuild -resolvePackageDependencies -project ThaiLens.xcodeproj -scheme ThaiLens -clonedSourcePackagesDirPath build-packages
+      - name: Run Swift tests
+        timeout-minutes: 25
+        run: |
+          DEVICE_ID=$(python3 scripts/simulator.py)
+          python3 - "$DEVICE_ID" <<'PY'
+          import subprocess, sys
+          device = sys.argv[1]
+          print('Preparing simulator: ' + device, flush=True)
+          boot = subprocess.run(['xcrun', 'simctl', 'boot', device], text=True, capture_output=True, timeout=60)
+          if boot.returncode and 'Booted' not in boot.stderr:
+              print(boot.stderr, flush=True)
+              raise SystemExit(boot.returncode)
+          subprocess.run(['xcrun', 'simctl', 'bootstatus', device, '-b'], check=True, timeout=360)
+          print('Simulator boot complete; starting XCTest', flush=True)
+          PY
+          xcodebuild test -project ThaiLens.xcodeproj -scheme ThaiLens -clonedSourcePackagesDirPath build-packages -destination "platform=iOS Simulator,id=$DEVICE_ID" -destination-timeout 120 -parallel-testing-enabled NO -test-timeouts-enabled YES -default-test-execution-time-allowance 60 -maximum-test-execution-time-allowance 120 -resultBundlePath build-tests/TestResults.xcresult -derivedDataPath build-tests CODE_SIGNING_ALLOWED=NO
+      - name: Collect actual subtitle rendering previews
+        run: python3 scripts/collect_previews.py
+      - name: Build arm64 device app
+        run: xcodebuild -project ThaiLens.xcodeproj -scheme ThaiLens -clonedSourcePackagesDirPath build-packages -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build ARCHS=arm64 ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO build
+      - name: Package unsigned IPA
+        run: python3 scripts/package_ipa.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ThaiLens-Recovery-v0.9-unsigned
+          path: |
+            source/dist/ThaiLens-unsigned.ipa
+            source/dist/subtitle-previews/*.png
+          if-no-files-found: error
+          retention-days: 3
+      - name: Upload XCTest result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ThaiLens-v0.9-test-results
+          path: source/build-tests/TestResults.xcresult
+          if-no-files-found: ignore
+          retention-days: 3
