@@ -1,11 +1,11 @@
-# ThaiLens build source
+# ThaiLens 0.9.1
 
-Experimental Thai-to-Chinese iPhone subtitles. Version 0.9.0 contains recovery for transient network failures and signed configuration updates.
+Thai-to-Chinese iPhone subtitles with network recovery and automatic translation model fallback.
 
-The recovery build passed all 89 XCTest checks, generated 3 iOS subtitle previews, and packaged an unsigned arm64 IPA with its broadcast extension. [Build record](https://github.com/jir782172-source/ThaiLens-Build/actions/runs/45539638589). Actual network switching on the user's iPhone still needs device validation.
+Uses the user's Groq account: Qwen 3.8 27B is primary; GPT-OSS 120B is the fixed backup on rate limit or model unavailability. Each model honors its own cooldown. If both are limited, the active session waits before trying again. Whisper Large V3 remains the speech recognizer. No provider or key rotation. Use a Free Plan account; the app cannot inspect account billing status and never changes the plan.
 
-Use your own Groq API key on the phone. No API keys, signing certificates, conversation data, audio recordings, or diagnostic logs are included. Diagnostics and signed updates use a separately authorized private repository; its access token is entered on the phone.
+HTTP Retry-After and exhausted request/token reset headers are honored. Missing timing metadata uses conservative backoff. Network changes cannot skip quota waits. Capture and existing subtitles remain while waiting; old audio is not buffered for later upload. Recent audio resumes after cooldown. Rate limits cannot be bypassed and uninterrupted availability is not guaranteed.
 
-The app processes ReplayKit app audio, never the microphone. iOS may restrict capture in calls or protected content. A terminated broadcast must be started manually.
+No API keys, signing certificates, conversation data, recordings, or diagnostic logs are included. Diagnostics and signed configuration remain in the separate private ThaiLens repository. App code updates require installing a newly signed IPA. No microphone capture; iOS can restrict call audio. Real YeeTalk call capture and real-provider translation accuracy require device testing.
 
-The workflow uses a standard macOS runner, runs regression tests, then packages a single unsigned arm64 IPA including the broadcast extension. Re-sign both targets before installing. Third-party notices are included under Resources/Licenses.
+Build: unpack the source archive, run scripts/prepare.py, generate with XcodeGen, run XCTest, build arm64 iPhoneOS, then scripts/package_ipa.py. The existing workflow archive filename remains ThaiLens-source-v0.9.zip for compatibility; the enclosed project is version 0.9.1 (10).
